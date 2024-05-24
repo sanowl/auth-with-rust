@@ -1,0 +1,23 @@
+[package]
+name = "auth-with-rust"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+actix-web = "4.0.1" # Upgraded significantly
+diesel = { version = "2.1.2", features = [
+    "postgres",
+    "uuid",
+    "r2d2",
+    "chrono",
+] }
+dotenv = "0.15.0"
+jsonwebtoken = "8.0.1" # Major upgrade
+serde = { version = "1.0.185", features = [
+    "derive",
+] } # Combined with serde_derive
+tokio = { version = "1.32.0", features = ["full"] }
+uuid = { version = "1.4.1", features = ["serde", "v4"] }
