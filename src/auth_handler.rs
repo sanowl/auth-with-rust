@@ -1,10 +1,15 @@
-use crate::errors::ServiceError;
-use crate::models::{DbExecutor, SlimUser, User};
-use crate::utils::decode_token;
 use actix::{Handler, Message};
-use actix_web::{middleware::identity::RequestIdentity, FromRequest, HttpRequest};
-use bcrypt::verify;
+use actix_web::{dev::Payload, web, Error, FromRequest, HttpRequest, HttpResponse};
 use diesel::prelude::*;
+use futures::future::{ok, Ready};
+
+use crate::{
+    errors::ServiceError,
+    models::{SlimUser, User},
+    utils::decode_token,
+    DbExecutor,
+};
+use bcrypt::verify;
 
 #[derive(Debug, Deserialize)]
 pub struct AuthData {
@@ -20,47 +25,43 @@ impl Handler<AuthData> for DbExecutor {
     type Result = Result<SlimUser, ServiceError>;
 
     fn handle(&mut self, msg: AuthData, _: &mut Self::Context) -> Self::Result {
-        use crate::schema::users::dsl::{email, users};
+        use crate::schema::users::dsl::*;
+
         let conn: &PgConnection = &self.0.get().unwrap();
-        let mismatch_error = Err(ServiceError::BadRequest(
-            "Username and Password don't match".into(),
-        ));
+        let mismatch_error = ServiceError::BadRequest("Invalid credentials".into());
 
-        let mut items = users.filter(email.eq(&msg.email)).load::<User>(conn)?;
+        let maybe_user = users
+            .filter(email.eq(&msg.email))
+            .first::<User>(conn)
+            .optional()?;
 
-        if let Some(user) = items.pop() {
-            match verify(&msg.password, &user.password) {
-                Ok(matching) => {
-                    if matching {
-                        return Ok(user.into());
-                    } else {
-                        return mismatch_error;
-                    }
-                }
-                Err(_) => {
-                    return mismatch_error;
-                }
+        if let Some(user) = maybe_user {
+            if verify(&msg.password, &user.password)? {
+                Ok(user.into())
+            } else {
+                Err(mismatch_error)
             }
+        } else {
+            Err(mismatch_error)
         }
-
-        mismatch_error
     }
 }
 
-// we need the same data as SlimUser
-// simple aliasing makes the intentions clear and its more readable
+// Alias for clarity
 pub type LoggedUser = SlimUser;
 
-impl<S> FromRequest<S> for LoggedUser {
-    type Config = ();
-    type Result = Result<LoggedUser, ServiceError>;
+impl FromRequest for LoggedUser {
+    type Error = Error;
+    type Future = Ready<Result<LoggedUser, Error>>;
 
-    fn from_request(req: &HttpRequest<S>, _: &Self::Config) -> Self::Result {
-        if let Some(identity) = req.identity() {
-            let user: SlimUser = decode_token(&identity)?;
-            return Ok(user as LoggedUser);
-        }
+    fn from_request(req: &HttpRequest, _payload: &mut Payload) -> Self::Future {
+        let result = match req.cookie("auth-cookie") {
+            Some(cookie) => decode_token(cookie.value())
+                .map_err(|_| ServiceError::Unauthorized)
+                .map(|user| user as LoggedUser),
+            None => Err(ServiceError::Unauthorized),
+        };
 
-        Err(ServiceError::Unauthorized)
+        ok(result.map_err(actix_web::Error::from))
     }
 }
