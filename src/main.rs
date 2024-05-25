@@ -20,7 +20,7 @@ extern crate failure;
 mod app;
 mod auth_handler;
 mod auth_routes;
-mod errors;
+
 mod errros;
 mod invitation_handler;
 mod invitation_routes;
