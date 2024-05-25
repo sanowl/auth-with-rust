@@ -1,11 +1,11 @@
 use actix::{Actor, SyncContext};
+use chrono::{Local, NaiveDateTime};
+use diesel::{Insertable, Queryable};
 use diesel::pg::PgConnection;
 use diesel::r2d2::{ConnectionManager, Pool};
-use chrono::{NaiveDateTime, Local};
-use uuid::Uuid;
+use serde::{Deserialize, Serialize};
 use std::convert::From;
-use serde::{Serialize, Deserialize};
-use diesel::{Queryable, Insertable};
+use uuid::Uuid;
 
 pub struct DbExecutor(pub Pool<ConnectionManager<PgConnection>>);
 
@@ -22,20 +22,21 @@ pub struct User {
 }
 
 impl User {
-    pub fn remove_pwd(mut self) -> Self {
-        self.password = "".to_string();
-        self
-    }
-
-    pub fn with_detail(email: String, password: String) -> Self {
+    pub fn new(email: String, password: String) -> Self {
         User {
             email,
             password,
             created_at: Local::now().naive_local(),
         }
     }
+
+    pub fn remove_password(mut self) -> Self {
+        self.password = String::new();
+        self
+    }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SlimUser {
     pub email: String,
 }
